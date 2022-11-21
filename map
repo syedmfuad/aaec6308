@@ -1,0 +1,263 @@
+library(dplyr)
+library(ggplot2)
+library(lmtest)
+library(multiwayvcov)
+library(tmap)
+library(tigris)
+
+data <- read.csv("atlanta_temp_3500.csv")
+
+data$ass_sp <- (data$ass_last*2.5)/(data$salesprice)
+
+data$tax_fmv <- data$tax_last/(data$ass_last*2.5)
+
+data$tax_sp <- data$tax_last/(data$salesprice)
+
+data %>%
+  mutate(quantile = ntile(pct_black, 4)) -> data1
+
+data1$quantile <- as.factor(data1$quantile)
+
+levels(data1$quantile)
+
+
+
+plot <- ggplot(data1, aes(x=factor(quantile), y=tax_sp, fill = S4))+
+  geom_boxplot()+xlab("Black % Quartile")+ylab("Tax to Sales Price")+
+  theme( legend.position = "none" ) + geom_smooth(method = "lm", se=FALSE, color="black", group = 1)
+
+plot
+
+
+
+plot <- ggplot(data1, aes(x=factor(quantile), y=tax_fmv, fill = S4))+
+  geom_violin(position="dodge", alpha=0.5, outlier.colour="transparent", trim=TRUE, draw_quantiles = c(0.5))+
+  xlab("Black % quartile")+ylab("Tax to Fair Market Value")+
+  theme( legend.position = "none" )
+
+plot
+
+
+ggplot(data1, aes(x = pct_black, y = tax_sp, colour =factor(quantile))) + 
+  geom_point() +
+  stat_smooth(data=data1,
+              method = "lm", se = T) + xlab("Black %")+ylab("Tax to Sales Price") + theme( legend.position = "none" )
+
+
+plot <- ggplot(data1, aes(x=factor(quantile), y=tax_fmv))+
+  geom_boxplot()+xlab("Black % Quartile")+ylab("Fair Market Value to Sales Price")+
+  theme( legend.position = "none" ) + geom_smooth(method = "lm", se=FALSE, color="black", group = 1)
+
+plot
+
+
+
+
+library(tidycensus)
+options(tigris_use_cache = TRUE)
+
+fulton_race <- get_decennial(
+  geography = "tract",
+  state = "GA",
+  county = "Fulton",
+  variables = c(
+    Hispanic = "P2_002N",
+    White = "P2_005N",
+    Black = "P2_006N",
+    Native = "P2_007N",
+    Asian = "P2_008N"
+  ),
+  summary_var = "P2_001N",
+  year = 2020,
+  geometry = TRUE
+) %>%
+  mutate(percent = 100 * (value / summary_value))
+
+library(tmap)
+fulton_black <- filter(fulton_race, 
+                         variable == "Black")
+
+current.mode <- tmap_mode("plot")
+tmap_mode("view")
+
+tm_shape(fulton_black) + 
+  tm_polygons()
+
+tm_shape(fulton_black) + 
+  tm_polygons(col = "percent")
+
+
+tm_shape(fulton_black) + 
+  tm_polygons(col = "percent",
+              style = "quantile",
+              n = 5,
+              palette = "Purples",
+              title = "2020 US Census") + 
+  tm_layout(title = "Percent Black\nby Census tract",
+            frame = FALSE,
+            legend.outside = TRUE)
+
+
+df <- sf::st_as_sf(data, coords = c("lon","lat"))
+
+
+fulton_black = sf::st_crop(fulton_black, xmin=-84.25, xmax=-84.60, ymin=33.62, ymax=33.90)
+
+
+
+tm_shape(fulton_black) + 
+  tm_polygons(col = "percent",
+              style = "quantile",
+              n = 5,
+              palette = "Blues",
+              title = "Percent Black\nby Census tract") + 
+  tm_shape(df) + tm_bubbles(size="tax_sp", col="tax_sp", palette = "Reds", style = "quantile", legend.size.show = FALSE,
+                            border.lwd = 0.1, border.alpha = 0.1, border.col = "black",
+                            title.col = "Tax/Sales Price", alpha = 0.5)
+
+
+tm_shape(fulton_black) + 
+  tm_polygons(style = "quantile",
+              n = 5,
+              palette = "Blues",
+              title = "2020 US Census") + tm_borders(alpha=0.4) + tm_shape(df) + tm_bubbles(size="tax_fmv", col="tax_fmv", 
+                                                                                            palette = "Reds", style = "quantile", legend.size.show = FALSE,
+                                                                                            border.lwd = 0.1, border.alpha = 0.1, border.col = "black",
+                                                                                            title.col = "Tax/FMV", alpha = 0.5)
+
+
+
+df$Submarket2 <- ifelse(df$S2=="S2_1", "Submarket 1", "Submarket 2")
+df$Submarket3 <- ifelse(df$S3=="S3_1", "Submarket 1", ifelse(df$S3=="S3_2", "Submarket 2", "Submarket 3"))
+df$Submarket4 <- ifelse(df$S4=="S4_1", "Submarket 1", ifelse(df$S4=="S4_2", "Submarket 2", ifelse(df$S4=="S4_3", "Submarket 3", "Submarket 4")))
+
+
+fulton_income <- get_acs(
+  geography = "tract",
+  state = "GA",
+  county = "Fulton",
+  variables = c(
+    income = "B19013_001"
+  ),
+  year = 2018,
+  geometry = TRUE
+)
+
+
+fulton_income = sf::st_crop(fulton_income, xmin=-84.25, xmax=-84.60, ymin=33.62, ymax=33.90)
+
+
+tm_shape(fulton_income) + 
+  tm_polygons(col = "estimate",
+              style = "quantile",
+              n = 5,
+              palette = "Blues",
+              title = "Median Income\nby Census tract") + 
+  tm_shape(df) + tm_dots(col="Submarket4", size = 0.05, alpha = 0.5, 
+                         scale = 1, style = "quantile")
+
+
+
+#slow
+
+data <- read.csv("columbus.csv")
+data <- sample_n(data, 500)
+
+coord <- data.frame(lat = c(data$hlat), long = c(data$hlong))
+
+coord$census_code <- apply(coord, 1, function(row) call_geolocator_latlon(row['lat'], row['long']))
+coord
+
+
+#fast
+
+data <- read.csv("columbus.csv")
+set.seed(12345)
+data <- sample_n(data, 2500)
+
+data <- select(data, hlong, hlat, county, tract, price_000s)
+
+col_income <- get_acs(
+  geography = "tract",
+  state = "OH",
+  county = "Franklin",
+  variables = c(
+    poverty = "B19013_001"),
+  year = 2010,
+  geometry = TRUE
+)
+
+col_income$row <- as.numeric(rownames(col_income))
+
+#boundary <- st_bbox(col_income)
+
+#data <- subset(data, hlong >= boundary[1] & hlong <= boundary[3] & hlat >= boundary[2] & hlat <= boundary[4])
+
+coord <- data.frame(lat = c(data$hlat), long = c(data$hlong)) %>%
+  st_as_sf(coords = c("long", "lat"),
+           crs = st_crs(col_income))
+
+coord$row <- as.numeric(st_within(coord, col_income))
+
+data <- cbind(data, coord)
+data$geometry <- NULL
+
+#col_income_2 <- st_join(data, col_income, join = st_nearest_feature, by=row)
+
+new_data <- merge(data, col_income, by="row", all.x = TRUE)
+
+new_data <- st_as_sf(new_data)
+
+ggplot(col_income) +
+  geom_sf() +
+  geom_sf(data = coord, aes(color = is.na(row)))
+
+
+ggplot(new_data) +
+  geom_sf() +
+  geom_sf(data = coord, aes(color = is.na(row)))
+
+
+
+
+tm_shape(mynewspdf) + 
+  tm_polygons(col = "estimate",
+              style = "quantile",
+              n = 5,
+              palette = "Blues",
+              title = "Percent Black\nby Census tract") + 
+  tm_shape(df) + tm_bubbles(size="tax_sp", col="tax_sp", palette = "Reds", style = "quantile", legend.size.show = FALSE,
+                            border.lwd = 0.1, border.alpha = 0.1, border.col = "black",
+                            title.col = "Tax/Sales Price", alpha = 0.5)
+
+
+
+
+
+
+
+
+
+data <- read.csv("columbus.csv")
+set.seed(12345)
+data <- sample_n(data, 2500)
+
+data <- select(data, hlong, hlat, county, tract, price_000s, geoid)
+
+ohio_tracts <- tracts("OH", "Franklin", class = "sf") %>%
+  select(GEOID, TRACTCE)
+
+coord_2 <- data.frame(lat = c(data$hlat), long = c(data$hlong)) %>%
+  st_as_sf(coords = c("long", "lat"),
+           crs = st_crs(ohio_tracts))
+
+my_points_tract <- st_join(coord_2, ohio_tracts)
+
+#data$GEOID <- as.factor(data$geoid)
+#my_points_tract$geoid <- as.numeric(my_points_tract$GEOID)
+
+new_data <- merge(my_points_tract, data, by="geoid")
+
+
+
+
