@@ -1,0 +1,83 @@
+library(tidycensus)
+library(tidyverse)
+library(maps)
+library(sf)
+library(data.table)
+data(state.fips)
+
+var_dec10 <- load_variables(2010, "sf1", cache = TRUE) #variables in decennial 2010
+var_acs10 <- load_variables(2010, "acs5", cache = TRUE) #variables in acs 2010
+
+#batch 1
+
+#variables in batch 1
+#DP02_0001 = total households acs5/profile
+#B19013_001 = median household income
+#B17017_002 = total households in poverty
+#B22001_002 = total households with snap
+#B19083_001 = tract gini inequality
+#B01003_001 = total tract population
+#B25097_001 = median property value
+#B08006_008 = total population taking public transportation to work (except taxicab)
+#B08201_002 = total households without vehicle
+#B08006_017 = total population working from home
+#B28002_002 = total households with internet
+
+vt1 <- get_acs(geography = "tract", 
+               variables = c(hh_number="DP02_0001", hh_medianincome = "B19013_001",
+                             hh_poverty="B17017_002", hh_snap="B22002_002", #B22001_002
+                             tract_gini="B19083_001", tract_pop="B01003_001", 
+                             hh_medianval="B25097_001", public_trans="B08006_008", 
+                             hh_novehicle="B08201_002", wfh = "B08006_017"), 
+               state="GA", county="Fulton",
+               year = 2010)
+
+vt1_dt <- as.data.table(vt1)
+data_wide_vt1 <- dcast(vt1_dt, GEOID ~ variable, fun.aggregate = mean,
+                       value.var=c("estimate"))
+
+data_wide_vt1$pov_rate <- (data_wide_vt1$hh_poverty/data_wide_vt1$hh_number)*100
+data_wide_vt1$pub_transport <- (data_wide_vt1$public_trans/data_wide_vt1$tract_pop)*100
+data_wide_vt1$hh_medianincome000 <- data_wide_vt1$hh_medianincome/1000
+data_wide_vt1$hh_medianval000 <- data_wide_vt1$hh_medianval/1000
+data_wide_vt1$wfh <- (data_wide_vt1$wfh/data_wide_vt1$tract_pop)*100
+
+data_wide_vt1 <- select(data_wide_vt1, GEOID, hh_medianincome000, pov_rate, hh_snap,
+                        tract_gini, hh_medianval000, pub_transport, 
+                        hh_novehicle, wfh)
+
+internet <- get_acs(geography = "tract", 
+                    variables = c(hh_internet="B28002_002", hh_number="DP02_0001"), 
+                    state=force(state.fips)$abb,
+                    year = 2017)
+
+internet <- as.data.table(internet)
+internet <- dcast(internet, GEOID ~ variable, fun.aggregate = mean,
+                  value.var=c("estimate"))
+
+internet$hh_internet <- (internet$hh_internet/internet$hh_number)*100
+
+data_wide_vt1 <- merge(data_wide_vt1, internet, by="GEOID")
+
+#plot
+
+fulton_income <- get_acs(
+  geography = "tract",
+  state = "GA",
+  county = "Fulton",
+  variables = c(
+    poverty = "B19013_001"
+  ),
+  year = 2010,
+  geometry = TRUE
+)
+
+current.mode <- tmap_mode("plot")
+tmap_mode("view")
+
+tm_shape(fulton_income) + 
+  tm_polygons(col = "estimate",
+              style = "quantile",
+              n = 5,
+              palette = "Blues",
+              title = "Median Income\nby Census tract")
