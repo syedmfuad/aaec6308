@@ -4,6 +4,10 @@ library(maps)
 library(sf)
 library(data.table)
 data(state.fips)
+library(dplyr)
+library(ggplot2)
+library(tmap)
+library(tigris)
 
 var_dec10 <- load_variables(2010, "sf1", cache = TRUE) #variables in decennial 2010
 var_acs10 <- load_variables(2010, "acs5", cache = TRUE) #variables in acs 2010
@@ -46,19 +50,6 @@ data_wide_vt1 <- select(data_wide_vt1, GEOID, hh_medianincome000, pov_rate, hh_s
                         tract_gini, hh_medianval000, pub_transport, 
                         hh_novehicle, wfh)
 
-internet <- get_acs(geography = "tract", 
-                    variables = c(hh_internet="B28002_002", hh_number="DP02_0001"), 
-                    state=force(state.fips)$abb,
-                    year = 2017)
-
-internet <- as.data.table(internet)
-internet <- dcast(internet, GEOID ~ variable, fun.aggregate = mean,
-                  value.var=c("estimate"))
-
-internet$hh_internet <- (internet$hh_internet/internet$hh_number)*100
-
-data_wide_vt1 <- merge(data_wide_vt1, internet, by="GEOID")
-
 #plot
 
 fulton_income <- get_acs(
@@ -66,11 +57,9 @@ fulton_income <- get_acs(
   state = "GA",
   county = "Fulton",
   variables = c(
-    poverty = "B19013_001"
-  ),
+    med_income = "B19013_001"),
   year = 2010,
-  geometry = TRUE
-)
+  geometry = TRUE)
 
 current.mode <- tmap_mode("plot")
 tmap_mode("view")
@@ -81,3 +70,5 @@ tm_shape(fulton_income) +
               n = 5,
               palette = "Blues",
               title = "Median Income\nby Census tract")
+              
+              
