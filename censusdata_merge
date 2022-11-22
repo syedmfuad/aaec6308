@@ -1,0 +1,57 @@
+#slow
+
+data <- read.csv("columbus.csv")
+data <- sample_n(data, 500)
+
+coord <- data.frame(lat = c(data$hlat), long = c(data$hlong))
+
+coord$census_code <- apply(coord, 1, function(row) call_geolocator_latlon(row['lat'], row['long']))
+coord
+
+
+#fast
+
+data <- read.csv("columbus.csv")
+set.seed(12345)
+data <- sample_n(data, 2500)
+
+data <- select(data, hlong, hlat, county, tract, price_000s)
+
+col_income <- get_acs(
+  geography = "tract",
+  state = "OH",
+  county = "Franklin",
+  variables = c(poverty = "B19013_001"),
+  year = 2010,
+  geometry = TRUE)
+
+col_income$row <- as.numeric(rownames(col_income))
+
+#boundary <- st_bbox(col_income)
+
+#data <- subset(data, hlong >= boundary[1] & hlong <= boundary[3] & hlat >= boundary[2] & hlat <= boundary[4])
+
+coord <- data.frame(lat = c(data$hlat), long = c(data$hlong)) %>%
+  st_as_sf(coords = c("long", "lat"),
+           crs = st_crs(col_income))
+
+coord$row <- as.numeric(st_within(coord, col_income))
+
+data <- cbind(data, coord)
+data$geometry <- NULL
+
+#col_income_2 <- st_join(data, col_income, join = st_nearest_feature, by=row)
+
+new_data <- merge(data, col_income, by="row", all.x = TRUE)
+
+new_data <- st_as_sf(new_data)
+
+ggplot(col_income) +
+  geom_sf() +
+  geom_sf(data = coord, aes(color = is.na(row)))
+
+ggplot(new_data) +
+  geom_sf() +
+  geom_sf(data = coord, aes(color = is.na(row)))
+  
+  
