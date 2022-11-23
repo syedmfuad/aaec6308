@@ -1,0 +1,205 @@
+
+rm(list=ls())
+
+library(dplyr)
+library(ggplot2)
+library(lmtest)
+library(multiwayvcov)
+library(tmap)
+library(tigris)
+
+library(tidyverse)
+library(maps)
+library(sf)
+library(data.table)
+
+high <- read.csv("LBK_high.csv")
+low <- read.csv("LBK_low.csv")
+
+low$HouseAge <- low$HouseAge-1
+
+high$concat <- paste0(high$Price, high$SquareFoot)
+low$concat <- paste0(low$Price, low$SquareFoot)
+
+length(unique(high$concat))
+length(unique(low$concat))
+
+drops <- c("Price","SquareFoot", "HouseAge", "Lot", "Garage", "Env", "Distance")
+low <- low[ , !(names(low) %in% drops)]
+
+data <- merge(high, low, by="concat")
+
+#mapping
+
+library(tidycensus)
+options(tigris_use_cache = TRUE)
+
+fulton_race <- get_decennial(
+  geography = "block group",
+  state = "TX",
+  county = "Lubbock",
+  variables = c(Black = "H006003"),
+  summary_var = "P005001",
+  year = 2010,
+  geometry = TRUE) %>%
+  mutate(percent = 100 * (value / summary_value))
+
+fulton_black <- filter(fulton_race, 
+                       variable == "Black")
+
+current.mode <- tmap_mode("plot")
+tmap_mode("view")
+
+#empty map
+tm_shape(fulton_black) + 
+  tm_polygons()
+
+#map w/ black %
+tm_shape(fulton_black) + 
+  tm_polygons(col = "percent")
+
+#map w/ black % but more colorful
+tm_shape(fulton_black) + 
+  tm_polygons(col = "percent",
+              style = "quantile",
+              n = 5,
+              palette = "Purples",
+              title = "2020 US Census") + 
+  tm_layout(title = "Percent Black\nby Census tract",
+            frame = FALSE,
+            legend.outside = TRUE)
+
+
+#cropping area outside atlanta
+df <- sf::st_as_sf(data, coords = c("Longitude","Latitude"))
+
+#fulton_black = sf::st_crop(fulton_black, xmin=-101.90, xmax=-102.30, ymin=31.85, ymax=33.60)
+
+#map w/ black % and tax/salesprice
+tm_shape(fulton_black) + 
+  tm_polygons(col = "percent",
+              style = "quantile",
+              n = 5,
+              palette = "Blues",
+              title = "Percent Black\nby Census tract") + 
+  tm_shape(df) + tm_bubbles(size="Price", col="Price", palette = "Reds", style = "quantile", legend.size.show = FALSE,
+                            border.lwd = 0.1, border.alpha = 0.1, border.col = "black",
+                            title.col = "Tax/Sales Price", alpha = 0.5)
+
+
+
+#fast
+
+vt1 <- get_acs(
+  geography = "tract", #block group
+  state = "TX",
+  county = "Lubbock",
+  variables = c(hh_number="DP02_0001", hh_medianincome = "B19013_001",
+                hh_poverty="B17017_002", tract_pop="B01003_001", 
+                hh_medianval="B25097_001", white="B02001_002", 
+                black="B02001_003", asian="B02001_005", hispanic="B01001I_001",
+                b_hs="B06009_002", 
+                b_25_1="B15002_012", b_25_2="B15002_013", 
+                b_25_3="B15002_029", b_25_4="B15002_030",
+                associate="B06009_004", bachelor="B06009_005", 
+                a_bachelor="B06009_006"),
+  year = 2010,
+  geometry = TRUE)
+
+vt1_dt <- as.data.table(vt1)
+data_wide_vt1 <- dcast(vt1_dt, GEOID ~ variable, fun.aggregate = mean,
+                       value.var=c("estimate"))
+
+data_wide_vt1$pov_rate <- (data_wide_vt1$hh_poverty/data_wide_vt1$hh_number)*100
+data_wide_vt1$hh_medianincome000 <- data_wide_vt1$hh_medianincome/1000
+data_wide_vt1$hh_medianval000 <- data_wide_vt1$hh_medianval/1000
+
+data_wide_vt1$below_hs <- (data_wide_vt1$b_hs/data_wide_vt1$tract_pop)*100
+data_wide_vt1$no_degree <- ((data_wide_vt1$b_25_1 + data_wide_vt1$b_25_2 +
+                               data_wide_vt1$b_25_3 + data_wide_vt1$b_25_4)/data_wide_vt1$tract_pop)*100
+data_wide_vt1$some_college <- (data_wide_vt1$associate/data_wide_vt1$tract_pop)*100
+data_wide_vt1$grad <- ((data_wide_vt1$bachelor + data_wide_vt1$a_bachelor)/data_wide_vt1$tract_pop)*100
+
+data_wide_vt1$white_pop <- (data_wide_vt1$white/data_wide_vt1$tract_pop)*100
+data_wide_vt1$black_pop <- (data_wide_vt1$black/data_wide_vt1$tract_pop)*100
+data_wide_vt1$asian_pop <- (data_wide_vt1$asian/data_wide_vt1$tract_pop)*100
+data_wide_vt1$hispanic_pop <- (data_wide_vt1$hispanic/data_wide_vt1$tract_pop)*100
+
+data_wide_vt1 <- select(data_wide_vt1, GEOID, hh_medianincome000, pov_rate,
+                        hh_medianval000, below_hs, grad, white_pop, black_pop)
+
+vt1 <- get_acs(
+  geography = "tract", #block group
+  state = "TX",
+  county = "Lubbock",
+  variables = c(hh_number="DP02_0001"),
+  year = 2010,
+  geometry = TRUE)
+
+vt1$NAME <- NULL
+vt1$variable <- NULL
+vt1$estimate <- NULL
+vt1$moe <- NULL
+
+data_wide_vt1$row <- as.numeric(rownames(data_wide_vt1))
+
+#boundary <- st_bbox(col_income)
+
+#data <- subset(data, hlong >= boundary[1] & hlong <= boundary[3] & hlat >= boundary[2] & hlat <= boundary[4])
+
+coord <- data.frame(lat = c(data$Latitude), long = c(data$Longitude)) %>%
+  st_as_sf(coords = c("long", "lat"),
+           crs = st_crs(vt1))
+
+coord$row <- as.numeric(st_within(coord, vt1))
+
+data <- cbind(data, coord)
+data$geometry <- NULL
+
+new_data <- merge(data, data_wide_vt1, by="row", all.x = TRUE)
+
+#new_data <- merge(new_data, vt1, by="GEOID", all.x = TRUE)
+#new_data <- st_as_sf(new_data)
+
+#from decennial
+
+fulton_race <- get_decennial(
+  geography = "block group",
+  state = "TX",
+  county = "Lubbock",
+  variables = c(Black = "H006003"),
+  summary_var = "P005001",
+  year = 2010,
+  geometry = TRUE) %>%
+  mutate(percent = 100 * (value / summary_value))
+
+fulton_black <- filter(fulton_race, 
+                       variable == "Black")
+
+fulton_black$NAME <- NULL
+fulton_black$variable <- NULL
+fulton_black$value <- NULL
+fulton_black$summary_value <- NULL
+
+fulton_black$row <- as.numeric(rownames(fulton_black))
+
+#boundary <- st_bbox(col_income)
+
+#data <- subset(data, hlong >= boundary[1] & hlong <= boundary[3] & hlat >= boundary[2] & hlat <= boundary[4])
+
+coord <- data.frame(lat = c(data$Latitude), long = c(data$Longitude)) %>%
+  st_as_sf(coords = c("long", "lat"),
+           crs = st_crs(fulton_black))
+
+coord$row <- as.numeric(st_within(coord, fulton_black))
+
+data <- cbind(data, coord)
+data$geometry <- NULL
+
+new_data <- merge(data, fulton_black, by="row", all.x = TRUE)
+
+model1 <- lm(Price ~ SquareFoot + HouseAge + Age + Gender + HHSize + Educ + percent, data=new_data)
+summary(model1)
+
+
+
