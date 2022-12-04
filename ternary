@@ -1,0 +1,106 @@
+library(dplyr)
+library(ggplot2)
+library(lmtest)
+library(multiwayvcov)
+library(tmap)
+library(Ternary)
+
+#https://cran.r-project.org/web/packages/Ternary/vignettes/Ternary.html
+
+#original stuff
+
+d <- read.csv("ATL data.csv")
+d %>% select(concat, S2, S3, S4) -> d
+#data <- merge(data, d, by=c("concat"))
+
+#data <- read.csv("atlanta single family 6116.csv")
+#data <- data[1:4978,] #3626 #4978
+
+#data <- merge(data, d, by=c("concat"))
+
+TernaryPlot()
+
+spectrumBins <- 5
+mySpectrum <- viridisLite::viridis(spectrumBins)
+binnedReflectance <- cut(d$pct_black, spectrumBins)
+dat_col <- mySpectrum[binnedReflectance]
+
+sizeBins <- 5
+mySizes <- seq(0.5, 2.4, length.out = sizeBins)
+binnedSize <- cut(d$salesprice, sizeBins)
+dat_cex <- mySizes[binnedSize]
+
+#TernaryPlot(atip = expression(SiO[2]),
+            #btip = expression(paste(Fe[2], O[3], " (wt%)")),
+            #ctip = expression(paste(Al[2], O[3]))
+#)
+
+TernaryPlot(atip = expression(Sub1),
+            btip = expression(Sub2),
+            ctip = expression(Sub3)
+)
+
+TernaryPoints(d[, c("S3_1", "S3_2", "S3_3")],
+              cex = dat_cex,
+              col = dat_col,
+              pch = 16
+)
+
+summary(I(d$S3_1+d$S3_2+d$S3_3))
+
+
+
+library(klaR)
+
+df <- matrix(c(d$S4_1, d$S4_2, d$S4_3, d$S4_4), ncol=4)
+
+dim(df)
+
+quadplot(df)
+
+library(plotly)
+library("plot3D")
+
+# Next, create some data for the pyramid plot
+x <- d$S3_1
+y <- d$S3_2
+z <- d$S3_3
+
+# Create the 3D pyramid plot using the plot_ly() function
+plot_ly(x = x, y = y, z = z, type = "mesh3d")
+
+
+
+library(scatterplot3d)
+
+scatterplot3d(x, y, z,
+              main="3D Scatterplot",
+              xlab="x",
+              ylab="y",
+              zlab="z")
+
+
+
+
+
+library(lattice)
+
+x <- d$S2_1
+#x <- data.frame(x,1) ## 1 is your "height"
+#plot(x, type = 'o', pch = '|', ylab = '')
+lattice::stripplot(x)
+ 
+library(viridis)
+
+#https://homepage.divms.uiowa.edu/~luke/classes/STAT4580/stripplot.html
+dat <- sample_n(d, abs(nrow(d)/2))
+p2 <- ggplot(dat) + geom_point(aes(x = S2_1*100, y  = "", size = pct_black, alpha = 1/15, colour=log(salesprice/1000)), position = position_jitter(w = 0, h = 0.05)) + #shape=1
+  #scale_color_gradient(low = "#AF7AC5", high = "#E74C3C")
+  #scale_color_gradient(low = "yellow", high = "darkblue") +
+  scale_color_viridis() +
+  theme(aspect.ratio=1/5) + theme(legend.position="none") + 
+  xlab("Probability of being in submarket 1 (%)") + ylab("")
+p2
+
+
+
