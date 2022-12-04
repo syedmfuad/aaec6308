@@ -10,7 +10,7 @@ library(Ternary)
 #original stuff
 
 d <- read.csv("ATL data.csv")
-d %>% select(concat, S2, S3, S4) -> d
+#d %>% select(concat, S2, S3, S4) -> d
 #data <- merge(data, d, by=c("concat"))
 
 #data <- read.csv("atlanta single family 6116.csv")
@@ -43,10 +43,56 @@ TernaryPlot(atip = expression(Sub1),
 TernaryPoints(d[, c("S3_1", "S3_2", "S3_3")],
               cex = dat_cex,
               col = dat_col,
-              pch = 16
+              pch = 1
 )
 
-summary(I(d$S3_1+d$S3_2+d$S3_3))
+
+
+
+
+
+library(ggtern)
+set.seed(1)
+
+lines <- data.frame(x = c(50, 0, 50), 
+                    y = c(50, 50, 0), 
+                    z = c(0, 50, 50), 
+                    xend = c(100, 100, 100)/3, 
+                    yend = c(100, 100, 100)/3, 
+                    zend = c(100, 100, 100)/3)
+
+ggtern(d, aes(x = S3_1,y = S3_2, z = S3_3, color = log(salesprice/1000), size=(pct_black))) +
+  stat_density_tern(aes(alpha = ..level.., fill = log(salesprice/1000)), 
+                    geom = 'polygon', 
+                    bins = 10,
+                    color = "grey", bdl=0.0001, bdl.val=NA, na.rm = FALSE,
+                    show.legend = NA,
+                    inherit.aes = TRUE,
+                    weight = 1,
+                    base = "ilr",
+                    expand = TRUE) +
+  coord_tern() + 
+  #scale_fill_gradient2(high = "blue") +
+  geom_mask() +
+  geom_point(alpha = 0.25) +
+  geom_segment(data = lines, 
+               aes(x, y, z, 
+                   xend = xend, yend = yend, zend = zend), 
+               color = 'turquoise4', size = 1.25, linetype = "twodash") +
+  theme_showarrows() +
+  scale_color_viridis() + 
+  theme(legend.position="none") +
+  xlab("Submarket 1 (%)") + 
+  ylab("Submarket 2 (%)") +
+  zlab("Submarket 3 (%)") + 
+  theme(axis.text=element_text(size=8.5),
+        axis.title=element_text(size=8.5,face="bold"))
+  #coord_cartesian(clip = 'off') 
+  #guides(color = "none", fill = "none", alpha = "none")
+  #scale_colour_manual(values = c("tomato3", "turquoise4", "blue"))
+
+
+
 
 
 
@@ -58,26 +104,64 @@ dim(df)
 
 quadplot(df)
 
-library(plotly)
-library("plot3D")
-
-# Next, create some data for the pyramid plot
-x <- d$S3_1
-y <- d$S3_2
-z <- d$S3_3
-
-# Create the 3D pyramid plot using the plot_ly() function
-plot_ly(x = x, y = y, z = z, type = "mesh3d")
 
 
 
-library(scatterplot3d)
 
-scatterplot3d(x, y, z,
-              main="3D Scatterplot",
-              xlab="x",
-              ylab="y",
-              zlab="z")
+#https://stackoverflow.com/questions/27762894/r-using-quadplot-generating-color-gradient-for-data-points-based-on-5th-colum
+#https://stackoverflow.com/questions/42467254/plotting-tetrahedron-with-data-points-in-r/59157835#59157835
+
+a <- c(.2,.4,.6,.4,.2,.4,.2,.5)
+b <- c(.2,.3,.1,.3,.3,.3,.4,.2)
+c <- c(.3,.1,.2,.1,.1,.1,.1,.1)
+d <- c(.2,.2,.1,.2,.4,.2,.3,.2)
+e <- c(-10,20,-100,90,10,-30,-12, 0)
+f <- data.matrix(data.frame(a,b,c,d,e))
+
+d <- read.csv("ATL data.csv")
+
+d <- sample_n(d, 1000)
+
+df <- matrix(c(d$S4_1, d$S4_2, d$S4_3, d$S4_4), ncol=4)
+
+# Create custom color palette (blue to red gradient)
+grad <- colorRampPalette(c("blue","red"))
+
+# Get a vector of colors and deal with negative values in column "e"
+colors <- grad(length(min(df[,1]):max(df[,1])))
+index <- df[,1] + abs(min(df[,1]))
+
+# Plot using quadplot
+quadplot(df, labelcol=1, labelpch=1:4, col=colors[index], pch=19)
+
+# Add color legend
+library(shape)
+colorlegend(col=colors, zlim=range(df), zval=sort(unique(df)), posx = c(0.86, 0.89), posy=c(0.2,0.9))
+
+
+
+
+
+# Create custom color palette (blue to red gradient)
+grad <- colorRampPalette(c("blue","red"))
+
+# Get a vector of colors and deal with negative values in column "e"
+colors <- grad(length(min(f[,5]):max(f[,5])))
+index <- f[,5] + abs(min(f[,5]))
+
+# Plot using quadplot
+quadplot(f[,-5], labelcol=1, labelpch=1:4, col=colors[index], pch=19)
+
+# Add color legend
+library(shape)
+colorlegend(col=colors, zlim=range(f[,5]), zval=sort(unique(f[,5])), posx = c(0.86, 0.89), posy=c(0.2,0.9))
+
+
+
+
+
+
+
 
 
 
@@ -88,7 +172,7 @@ library(lattice)
 x <- d$S2_1
 #x <- data.frame(x,1) ## 1 is your "height"
 #plot(x, type = 'o', pch = '|', ylab = '')
-lattice::stripplot(x)
+#lattice::stripplot(x)
  
 library(viridis)
 
