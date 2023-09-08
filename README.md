@@ -1,5 +1,5 @@
 # aaec6308
-Demo codes for Advanced Natural Resource Economics course by Dr. Farmer. 
+Demo codes for Advanced Natural Resource Economics course by Dr. Farmer and TA-ed by yours truly. 
 
 ## atl_sub2 
 Code for fully endogenized finite mixture model for two submarkets in Atlanta 
