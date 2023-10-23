@@ -1,3 +1,7 @@
+library(tidycensus)
+library(tidyr)
+library(sf) 
+
 #slow
 
 data <- read.csv("columbus.csv")
